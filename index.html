@@ -3,14 +3,145 @@
 <head>
   <meta charset="UTF-8">
   <title>볼링 클럽 구글 로그인</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body {
+      background: #b3e2fa;
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Noto Sans KR', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-container {
+      background: rgba(255,255,255,0.85);
+      padding: 40px 32px 32px 32px;
+      border-radius: 30px;
+      box-shadow: 0 4px 24px #0001;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .bowling-img {
+      width: 120px;
+      margin-bottom: 18px;
+      user-select: none;
+    }
+    h1 {
+      font-size: 2.1rem;
+      margin: 0 0 20px 0;
+      color: #222f3e;
+      letter-spacing: -1px;
+      font-weight: 900;
+      text-align: center;
+    }
+    .google-btn {
+      display: flex;
+      align-items: center;
+      padding: 13px 38px;
+      font-size: 1.15rem;
+      background: #fff;
+      color: #222;
+      border: none;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px #0001;
+      cursor: pointer;
+      font-weight: 600;
+      margin: 22px 0 10px 0;
+      transition: box-shadow .12s;
+      outline: none;
+    }
+    .google-btn:hover {
+      box-shadow: 0 2px 12px #0002;
+    }
+    .google-logo {
+      width: 28px;
+      height: 28px;
+      margin-right: 13px;
+      vertical-align: middle;
+    }
+    .desc {
+      margin-top: 17px;
+      color: #294060;
+      font-size: 1.05rem;
+      text-align: center;
+      font-weight: 500;
+    }
+    @media (max-width: 600px) {
+      .login-container {
+        padding: 25px 8px 24px 8px;
+      }
+      .bowling-img { width: 85px; }
+      h1 { font-size: 1.2rem; }
+      .google-btn { padding: 10px 15px; font-size: 1rem;}
+      .desc { font-size: .95rem;}
+    }
+  </style>
 </head>
 <body>
-  <h2>볼링 클럽 구글 로그인</h2>
-  <button id="loginBtn">구글 로그인</button>
-  <div id="userInfo" style="margin-top:20px"></div>
-  <!-- Firebase compat CDN 적용 -->
+  <div class="login-container">
+    <!-- SVG 볼링공+핀 (원하는 이미지로 교체 가능) -->
+    <svg class="bowling-img" viewBox="0 0 100 80" fill="none">
+      <ellipse cx="38" cy="52" rx="32" ry="27" fill="#2c325a"/>
+      <ellipse cx="74" cy="50" rx="11" ry="24" fill="#f5f5f5"/>
+      <ellipse cx="92" cy="54" rx="7.8" ry="22" fill="#f5f5f5"/>
+      <rect x="67" y="33" width="13" height="3" rx="2" fill="#ed5553"/>
+      <rect x="86" y="36" width="7" height="3" rx="2" fill="#ed5553"/>
+      <circle cx="28" cy="46" r="3" fill="#222a45"/>
+      <circle cx="34" cy="56" r="2.2" fill="#222a45"/>
+      <circle cx="41" cy="51.5" r="2" fill="#222a45"/>
+    </svg>
+    <h1>볼링 클럽 구글 로그인</h1>
+    <button class="google-btn" id="loginBtn">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" class="google-logo" alt="Google Logo">
+      Google로 로그인
+    </button>
+    <div class="desc">
+      로그인 후 클럽 회원 관리, 점수 입력 가능!
+    </div>
+    <div id="userInfo" style="margin-top:28px"></div>
+  </div>
+
+  <!-- Firebase compat CDN -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script src="main.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBoVtFKGoy0pzuwFj9s3L0jhz95yZw0Uns",
+      authDomain: "bowlingclub-a7f4a.firebaseapp.com",
+      projectId: "bowlingclub-a7f4a",
+      storageBucket: "bowlingclub-a7f4a.firebasestorage.app",
+      messagingSenderId: "564414783398",
+      appId: "1:564414783398:web:7bda19088ff01e697df967",
+      measurementId: "G-9NMMNGZR14"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+
+    document.getElementById("loginBtn").onclick = function() {
+      firebase.auth().signInWithPopup(provider)
+        .then((result) => {
+          const user = result.user;
+          document.getElementById("userInfo").innerHTML = `
+            <p style="font-size:1.08rem;margin-bottom:4px;"><b>이름:</b> ${user.displayName}</p>
+            <p style="font-size:1.08rem;margin-bottom:8px;"><b>이메일:</b> ${user.email}</p>
+            <img src="${user.photoURL}" width="58" alt="프로필사진" style="border-radius:15px;border:2px solid #b3e2fa;margin-bottom:8px;">
+            <br>
+            <button style="padding:7px 18px;border-radius:10px;background:#f4f4f4;font-size:.95rem;border:1px solid #ccc;margin-top:7px;cursor:pointer;" id="logoutBtn">로그아웃</button>
+          `;
+          document.getElementById("logoutBtn").onclick = function() {
+            firebase.auth().signOut().then(()=>{
+              location.reload();
+            });
+          };
+        })
+        .catch((error) => {
+          alert("로그인 실패: " + error.message);
+        });
+    };
+  </script>
 </body>
 </html>
