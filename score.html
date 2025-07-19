@@ -1,14 +1,142 @@
-<!-- 점수입력 페이지 (샘플) -->
 <!DOCTYPE html>
-<html lang='ko'>
+<html lang="ko">
 <head>
-  <meta charset='UTF-8'>
-  <title>점수입력</title>
-  <link rel='stylesheet' href='css/score.css'>
+  <meta charset="UTF-8" />
+  <title>경기 세션 기록</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <div class='navbar'>🎳 점수입력</div>
-  <div class='main-content'>점수 기록 입력 폼(샘플)</div>
-  <script src='js/score.js'></script>
+  <div id="header-area"></div>
+  <div class="main-content">
+    <h2>경기 세션 기록</h2>
+    <form id="sessionForm" class="session-form" autocomplete="off">
+      <label>날짜</label>
+      <input type="date" id="date" required>
+      <div style="display:flex; gap:8px; margin-bottom:6px;">
+        <div style="flex:1;">
+          <label style="margin-top:0;">레인 번호</label>
+          <input type="number" id="lane" min="1" required>
+        </div>
+        <div style="flex:1;">
+          <label style="margin-top:0;">게임 번호</label>
+          <input type="number" id="gameNum" min="1" required>
+        </div>
+      </div>
+      <label>참가자(회원) 선택</label>
+      <div id="players"></div>
+      <button type="button" id="addPlayer" class="main-btn" style="margin:7px 0 12px 0;background:#4b96f7;font-size:1em;">+ 참가자 추가</button>
+      <label>특이사항(메모)</label>
+      <input type="text" id="memo" maxlength="60" style="width:100%;" placeholder="중간합류/교체 등">
+      <button type="submit" class="main-btn">저장</button>
+    </form>
+    <div id="sessionMsg"></div>
+  </div>
+  <div id="bottom-nav-area"></div>
+  <script>
+    fetch('header.html').then(res => res.text()).then(html => document.getElementById('header-area').innerHTML = html);
+    fetch('bottom-nav.html').then(res => res.text()).then(html => document.getElementById('bottom-nav-area').innerHTML = html);
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script>
+    // 오늘 날짜 자동 입력
+    window.onload = function() {
+      const dateInput = document.getElementById('date');
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${yyyy}-${mm}-${dd}`;
+    };
+
+    // Firebase 초기화
+    const firebaseConfig = {
+      apiKey: "AIzaSyBoVtFKGoy0pzuwFj9s3L0jhz95yZw0Uns",
+      authDomain: "bowlingclub-a7f4a.firebaseapp.com",
+      projectId: "bowlingclub-a7f4a",
+      storageBucket: "bowlingclub-a7f4a.firebasestorage.app",
+      messagingSenderId: "564414783398",
+      appId: "1:564414783398:web:7bda19088ff01e697df967",
+      measurementId: "G-9NMMNGZR14"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // 회원 리스트 불러오기 (users 컬렉션)
+    let memberList = [];
+    db.collection('users').orderBy("name").get().then(qs => {
+      memberList = qs.docs.map(doc => ({id: doc.id, name: doc.data().name}));
+      updateAllSelects();
+    });
+
+    function updateAllSelects() {
+      document.querySelectorAll('.player-select').forEach(sel => {
+        const selected = sel.value;
+        const selectedIds = Array.from(document.querySelectorAll('.player-select'))
+          .map(s => s.value).filter(v => v && v !== selected);
+        sel.innerHTML = `<option value="">회원 선택</option>` +
+          memberList.map(m =>
+            selectedIds.includes(m.id) && m.id !== selected
+              ? '' : `<option value="${m.id}">${m.name}</option>`
+          ).join('');
+        sel.value = selected;
+      });
+    }
+
+    // 참가자 동적 추가/삭제 (드롭다운)
+    const playersDiv = document.getElementById('players');
+    function addPlayerRow(selectedId='', score='') {
+      const row = document.createElement('div');
+      row.innerHTML = `
+        <select class="player-select"></select>
+        <input type="number" min="0" max="300" placeholder="점수" value="${score}">
+        <button type="button" class="remove-player" title="삭제">-</button>
+      `;
+      row.querySelector('.remove-player').onclick = () => row.remove();
+      playersDiv.appendChild(row);
+      updateAllSelects();
+      if (selectedId) row.querySelector('.player-select').value = selectedId;
+    }
+    document.getElementById('addPlayer').onclick = () => addPlayerRow();
+    addPlayerRow(); // 시작시 1명 기본
+
+    // 폼 저장
+    document.getElementById('sessionForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const date   = document.getElementById('date').value;
+      const lane   = Number(document.getElementById('lane').value);
+      const gameNum= Number(document.getElementById('gameNum').value);
+      const memo   = document.getElementById('memo').value.trim();
+      const players= [...playersDiv.querySelectorAll('div')].map(row => {
+        const userId = row.querySelector('.player-select').value;
+        const user = memberList.find(m => m.id === userId);
+        return {
+          userId,
+          name: user ? user.name : "",
+          score: row.querySelector('input[type="number"]').value ? Number(row.querySelector('input[type="number"]').value) : null
+        }
+      }).filter(p => p.userId);
+      if (!players.length) {
+        document.getElementById('sessionMsg').textContent = "최소 한 명 이상의 참가자를 선택하세요.";
+        return;
+      }
+      try {
+        await db.collection('sessions').add({
+          date,
+          lane,
+          gameNum,
+          players,
+          memo,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        document.getElementById('sessionMsg').textContent = "저장 완료!";
+        this.reset(); playersDiv.innerHTML = ""; addPlayerRow();
+      } catch(err) {
+        document.getElementById('sessionMsg').textContent = "저장 실패: " + err.message;
+      }
+    }
+  </script>
 </body>
 </html>
