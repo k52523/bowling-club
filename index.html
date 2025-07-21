@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>볼링클럽 메인</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+<div class="navbar" style="width:100%;max-width:480px;margin:0 auto;box-sizing:border-box;padding:12px 0 10px 0;text-align:center;font-size:1.5em;background:#2368b3;color:#fff;box-shadow:0 2px 9px #2368b366;">
+  🎳 볼링클럽
+</div>
+
+  <div class="main-content">
+    <h2>클럽에 오신 것을 환영합니다!</h2>
+    
+	<!-- 생일 -->    
+	<div id="home-birthday-banner"></div>	
+	
+    <!-- 점수 표 (실제 데이터 있을 때만 출력) -->
+    <div id="home-score-table" style="margin-bottom:30px;"></div>
+
+    <div class="tip-card">
+      <h3>🎳 볼링 투구 체크리스트 (실전 프로 팁)</h3>
+      <ul>
+        <li><b>몸에 힘을 빼라</b><br><span class="desc">→ 경직된 근육은 투구의 부드러움과 회전을 방해함.<br><span class="tip">Tip:</span> 힘을 빼면 스윙이 자연스럽고, 부상 위험도 줄어듬.</span></li>
+        <li><b>공을 ‘밀지’ 말고 ‘툭’ 떨어뜨려라</b><br><span class="desc">→ 파울선 앞에서 자연스럽게 바닥에 떨어지도록.<br><span class="tip">Tip:</span> 공이 멀리 날아가면 회전과 라인 컨트롤이 어려워짐.</span></li>
+        <li><b>정확한 타겟 보드(스팟)에 ‘툭’!</b><br><span class="desc">→ 항상 같은 지점을 보고 공을 내려놓는 습관.<br><span class="tip">Tip:</span> ‘익숙한’ 보드를 정해두면 일관성↑.</span></li>
+        <li><b>회전을 ‘의식적으로’ 만들지 마라</b><br><span class="desc">→ 손목을 일부러 돌리려고 하지 않는다.<br><span class="tip">Tip:</span> 억지로 비틀면 오히려 ‘딸려간다’. 자연스럽게!</span></li>
+        <li><b>엄지 먼저, 중·약지로 마무리!</b><br><span class="desc">→ 엄지가 빠질 때 자연스럽게 중·약지에 ‘힘’이 걸려 회전 발생.<br><span class="tip">Tip:</span> 억지로 힘 빼지 말고, 중·약지에 ‘걸리기’만 신경.</span></li>
+        <li><b>엄지 타이밍 = 공이 바닥에 ‘닿기 직전’</b><br><span class="desc">→ 너무 일찍 빼면 던지기, 너무 늦으면 땅에 ‘내려찍기’ 됨.<br><span class="tip">Tip:</span> 마지막 ‘순간’에 엄지가 빠지도록 의식!</span></li>
+        <li><b>파이브스텝, 무게중심은 ‘아래’로</b><br><span class="desc">→ 스텝마다 하체 중심을 깔고, 목표 보드로 직진.<br><span class="tip">Tip:</span> 상체 힘을 빼고 하체로 미는 느낌.</span></li>
+      </ul>
+      <div class="routine">
+        <b>🏆 프로페셔널 투구 루틴</b><br>
+        <i>“힘을 빼고, 목표 보드에 공을 툭! 엄지 빠지는 타이밍에만 집중, 나머지는 중·약지에 맡긴다.”</i>
+      </div>
+    </div>
+  </div>
+ 
+  <div id="bottom-nav-container"></div>
+
+  <!-- Firebase 라이브러리 로딩 -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+ 
+  <script>
+	fetch('bottom-nav.html')
+	  .then(res => res.text())
+	  .then(html => {
+		document.getElementById('bottom-nav-container').innerHTML = html;
+	  });
+
+</script>
+
+  <script>
+    // Firebase 설정
+    const firebaseConfig = {
+      apiKey: "AIzaSyBoVtFKGoy0pzuwFj9s3L0jhz95yZw0Uns",
+      authDomain: "bowlingclub-a7f4a.firebaseapp.com",
+      projectId: "bowlingclub-a7f4a",
+      storageBucket: "bowlingclub-a7f4a.appspot.com",
+      messagingSenderId: "564414783398",
+      appId: "1:564414783398:web:7bda19088ff01e697df967",
+      measurementId: "G-9NMMNGZR14"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    // 최근 3일간 날짜별 점수표
+async function showRecentScores() {
+  const db = firebase.firestore();
+  const snapshot = await db.collection('sessions').get();
+  const data = snapshot.docs.map(doc => doc.data());
+
+  // 1. 날짜별로 묶기
+  const byDate = {};
+  data.forEach(item => {
+    if (!byDate[item.date]) byDate[item.date] = [];
+    byDate[item.date].push(item);
+  });
+
+  // 2. 최근 3일 추출(내림차순)
+  const dates = Object.keys(byDate).sort((a, b) => new Date(b) - new Date(a)).slice(0, 3);
+
+  let html = "";
+  dates.forEach(date => {
+    const sessions = byDate[date];
+    // 회원명 기준으로 게임번호별 점수+상태 배열 만들기
+    const userMap = {};
+    let maxGame = 0;
+    sessions.forEach(sess => {
+      sess.players.forEach(pl => {
+        if (!userMap[pl.name]) userMap[pl.name] = {};
+        userMap[pl.name][sess.gameNum] = {
+          score: pl.score,
+          isPerfect: pl.isPerfect,
+          isCover: pl.isCover
+        };
+        if (sess.gameNum > maxGame) maxGame = sess.gameNum;
+      });
+    });
+    maxGame = Math.max(maxGame, 1);
+
+    let userArr = Object.keys(userMap).map(name => {
+      let scores = [];
+      for(let i=1;i<=maxGame;i++) {
+        const v = userMap[name][i];
+        scores.push(v !== undefined ? v : null);
+      }
+      // 평균 계산 (숫자만 대상으로)
+      const numScores = scores.filter(x => x && typeof x.score === 'number').map(x=>x.score);
+      const avg = numScores.length ? Math.round((numScores.reduce((a, b) => a+b, 0)/numScores.length)*10)/10 : 0;
+      return { name, scores, avg };
+    });
+    // 점수 하나라도 있는 유저만 표시
+    userArr = userArr.filter(u => u.scores.some(s => s && s.score !== undefined));
+    if (userArr.length === 0) return;
+
+    // 평균 내림차순 정렬 및 순위
+    userArr.sort((a, b) => b.avg - a.avg);
+    userArr.forEach((u,i)=>u.rank=i+1);
+
+    // 날짜 표기 변환
+    const d = new Date(date);
+    const dateStr = `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+
+    html += `<h3 style="margin-top:2em; font-size:1.15em; color:#333;">${dateStr}</h3>
+    <div class="responsive-table-wrap">
+      <table>
+        <tr>
+          <th>이름</th>`;
+    for(let i=1;i<=maxGame;i++) html += `<th>${i}G</th>`;
+    html += `<th>av</th><th>순위</th></tr>`;
+    userArr.forEach(u=>{
+      html += `<tr><td>${u.name}</td>`;
+      u.scores.forEach(s=>{
+        let style = "";
+        if (s && s.isPerfect) style = ' style="background:red;font-weight:bold;"';
+        else if (s && s.isCover) style = ' style="background:gold;font-weight:bold;"';
+        html += `<td${style}>${s && s.score!==undefined ? s.score : ""}</td>`;
+      });
+      html += `<td>${u.avg}</td><td>${u.rank}</td></tr>`;
+    });
+    html += `</table></div>`;
+  });
+
+  // 점수 데이터가 있을 때만 테이블 표시, 없으면 아무것도 X
+  document.getElementById('home-score-table').innerHTML = html;
+}
+
+
+
+
+    // 표 실행
+    showRecentScores();
+	
+	async function showUpcomingBirthdays() {
+  const db = firebase.firestore();
+  const snapshot = await db.collection('users').get();
+  const members = snapshot.docs.map(doc => doc.data());
+  const today = new Date();
+
+  // 생일 날짜 및 남은 일수 계산
+  const result = members
+    .filter(m => m.birthday)
+    .map(m => {
+      const [year, month, day] = m.birthday.split('-');
+      let nextBirthday = new Date(today.getFullYear(), parseInt(month) - 1, parseInt(day));
+      if (nextBirthday < today) nextBirthday.setFullYear(today.getFullYear() + 1);
+      const diff = Math.floor((nextBirthday - today) / (1000 * 60 * 60 * 24));
+      return { ...m, nextBirthday, diff };
+    })
+    // 18개월 이내만
+    .filter(m => m.diff >= 0 && m.diff <= 30)
+    // "남은 일수" 오름차순 정렬
+    .sort((a, b) => a.diff - b.diff);
+
+  if (result.length > 0) {
+    let html = `
+    <div class="birthday-card">
+      <div class="birthday-card-title">
+        <span class="bday-emoji">🎂</span>  
+        <span>다가오는 생일인 회원</span>
+      </div>
+      <div class="birthday-card-list">
+        ${result.map(m => `
+          <div class="bday-member">
+            <span class="bday-icon">🥳</span>
+            <span class="bday-name">${m.name}</span>
+            <span class="bday-date">${("0" + (m.nextBirthday.getMonth() + 1)).slice(-2)}/${("0" + m.nextBirthday.getDate()).slice(-2)}</span>
+            <span class="bday-cake">🍰</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    `;
+    document.getElementById('home-birthday-banner').innerHTML = html;
+  } else {
+    document.getElementById('home-birthday-banner').innerHTML = '';
+  }
+}
+showUpcomingBirthdays();
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBoVtFKGoy0pzuwFj9s3L0jhz95yZw0Uns",
+      authDomain: "bowlingclub-a7f4a.firebaseapp.com",
+      projectId: "bowlingclub-a7f4a",
+      storageBucket: "bowlingclub-a7f4a.appspot.com",
+      messagingSenderId: "564414783398",
+      appId: "1:564414783398:web:7bda19088ff01e697df967",
+      measurementId: "G-9NMMNGZR14"
+    };
+
+  firebase.initializeApp(firebaseConfig);
+
+  function updateLoginoutBtn() {
+    const btn = document.getElementById('loginout-btn');
+    if (!btn || typeof firebase === "undefined" || !firebase.auth) return;
+    firebase.auth().onAuthStateChanged(function(user) {
+      if (user) {
+        btn.innerHTML = '🚪 로그아웃';
+        btn.href = "#";
+        btn.onclick = function() {
+          firebase.auth().signOut().then(() => location.reload());
+          return false;
+        };
+      } else {
+        btn.innerHTML = '👤 로그인';
+        btn.href = "login.html";
+        btn.onclick = null;
+      }
+    });
+  }
+
+  fetch('bottom-nav.html')
+    .then(response => response.text())
+    .then(html => {
+      document.getElementById('bottom-nav-container').innerHTML = html;
+      updateLoginoutBtn();
+    });
+</script>
+</body>
+</html>

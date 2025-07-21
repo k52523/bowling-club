@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>점수 조회/수정</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    .score-table-wrap { overflow-x: auto; margin-bottom: 24px;}
+    table.score-table { border-collapse: collapse; width: 100%; min-width: 410px; background: #f9fafc;}
+    table.score-table th, table.score-table td {
+      border: 1px solid #e0e4ea; padding: 7px 6px; font-size: 1em; text-align: center;
+    }
+    table.score-table th { background: #eef4ff; font-weight: 600;}
+    table.score-table td .score-actions { display: flex; gap: 5px; justify-content: center;}
+    .btn-edit, .btn-save, .btn-cancel, .btn-delete {
+      padding: 2px 6px; border-radius: 6px; border: none; font-size: 0.93em; cursor: pointer;
+    }
+    .btn-edit { background: #2368b3; color: #fff;}
+    .btn-save { background: #1cb685; color: #fff;}
+    .btn-cancel { background: #eee;}
+    .btn-delete { background: #e4544d; color: #fff;}
+    .no-data { color: #a5a5a5; text-align: center; padding: 25px 0; }
+    @media (max-width:600px){
+      table.score-table { min-width: 350px; font-size: 0.93em; }
+    }
+    /* 퍼펙트: 황금, 올커버: 은색 배경 */
+    .cell-perfect { background: linear-gradient(90deg,#ffe680,#fffbe2 70%) !important; }
+    .cell-cover   { background: linear-gradient(90deg,#eaf0ff,#f4f6fa 70%) !important; }
+  </style>
+</head>
+<body>
+  <div id="header-area"></div>
+  <div class="main-content">
+    <h2>나의 점수 기록</h2>
+    <div id="scoreList"></div>
+  </div>
+  <div id="bottom-nav-area"></div>
+  <script>
+    fetch('header.html').then(res => res.text()).then(html => document.getElementById('header-area').innerHTML = html);
+    fetch('bottom-nav.html').then(res => res.text()).then(html => document.getElementById('bottom-nav-area').innerHTML = html);
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBoVtFKGoy0pzuwFj9s3L0jhz95yZw0Uns",
+      authDomain: "bowlingclub-a7f4a.firebaseapp.com",
+      projectId: "bowlingclub-a7f4a",
+      storageBucket: "bowlingclub-a7f4a.appspot.com",
+      messagingSenderId: "564414783398",
+      appId: "1:564414783398:web:7bda19088ff01e697df967",
+      measurementId: "G-9NMMNGZR14"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    let editing = {}; // {docId: {idx:점수}}
+
+    firebase.auth().onAuthStateChanged(function(user) {
+      if (!user) {
+        alert("로그인 후 이용해주세요!");
+        window.location.href = "login.html";
+        return;
+      }
+      loadScores(user.uid);
+    });
+
+    async function loadScores(uid) {
+      const scoreList = document.getElementById("scoreList");
+      scoreList.innerHTML = "<div>불러오는 중...</div>";
+      try {
+        const qs = await db.collection("sessions").orderBy("date", "desc").get();
+
+        // 날짜별로 묶기
+        let byDate = {};
+        qs.forEach(doc => {
+          const data = doc.data();
+          const docId = doc.id;
+          (data.players || []).forEach((p, idx) => {
+            if (p.userId === uid) {
+              if (!byDate[data.date]) byDate[data.date] = [];
+              byDate[data.date].push({
+                ...p,
+                docId,
+                playerIdx: idx,
+                docGameNum: data.gameNum // 문서의 gameNum을 따로 저장
+              });
+            }
+          });
+        });
+
+        let html = "";
+        const dates = Object.keys(byDate).sort((a,b)=>new Date(b)-new Date(a));
+        if (dates.length === 0) {
+          scoreList.innerHTML = "<div class='no-data'>등록된 점수가 없습니다.</div>";
+          return;
+        }
+
+        dates.forEach(date => {
+          const arr = byDate[date];
+          arr.sort((a, b) => (a.gameNum ?? a.docGameNum ?? 0) - (b.gameNum ?? b.docGameNum ?? 0));
+
+          html += `<div class="score-table-wrap"><h3 style="font-size:1.05em; margin-bottom:7px;">${date}</h3>
+          <table class="score-table">
+            <tr>
+              <th>이름</th>
+              <th>게임</th>
+              <th>점수</th>
+              <th>올커버</th>
+              <th>퍼펙트</th>
+              <th>수정/삭제</th>
+            </tr>`;
+          arr.forEach(p=>{
+            const isEditing = editing[p.docId] && editing[p.docId].idx === p.playerIdx;
+            html += "<tr>";
+            html += `<td>${p.name||"-"}</td>`;
+            html += `<td>${p.gameNum ?? p.docGameNum ?? "-"}</td>`;
+
+            // 점수 셀: 상태별로 배경색 지정
+            let tdClass = "";
+            if(p.isPerfect) tdClass = "cell-perfect";
+            else if(p.isCover) tdClass = "cell-cover";
+            html += `<td class="${tdClass}">` + (isEditing ?
+                `<input type="number" value="${p.score ?? ""}" min="0" max="300" style="width:70px;">` :
+                (p.score ?? "-")
+              ) + `</td>`;
+
+            // 올커버 & 퍼펙트 체크
+            html += `<td>` + (isEditing
+              ? `<input type="checkbox" class="edit-cover" ${p.isCover ? "checked" : ""}>`
+              : (p.isCover ? "✔" : "-")
+            ) + `</td>`;
+            html += `<td>` + (isEditing
+              ? `<input type="checkbox" class="edit-perfect" ${p.isPerfect ? "checked" : ""}>`
+              : (p.isPerfect ? "✔" : "-")
+            ) + `</td>`;
+
+            html += `<td><div class="score-actions">`;
+            if (isEditing) {
+              html += `<button class="btn-save" data-id="${p.docId}" data-idx="${p.playerIdx}">저장</button>
+                       <button class="btn-cancel" data-id="${p.docId}">취소</button>`;
+            } else {
+              html += `<button class="btn-edit" data-id="${p.docId}" data-idx="${p.playerIdx}">수정</button>
+                       <button class="btn-delete" data-id="${p.docId}" data-idx="${p.playerIdx}">삭제</button>`;
+            }
+            html += `</div></td>`;
+            html += "</tr>";
+          });
+          html += "</table></div>";
+        });
+        scoreList.innerHTML = html;
+
+        // 이벤트 바인딩
+        document.querySelectorAll('.btn-edit').forEach(btn => {
+          btn.onclick = function() {
+            editing = { [btn.dataset.id]: { idx: Number(btn.dataset.idx) } };
+            loadScores(auth.currentUser.uid);
+          }
+        });
+        document.querySelectorAll('.btn-cancel').forEach(btn => {
+          btn.onclick = function() {
+            editing = {};
+            loadScores(auth.currentUser.uid);
+          }
+        });
+        document.querySelectorAll('.btn-save').forEach(btn => {
+          btn.onclick = async function() {
+            const docId = btn.dataset.id;
+            const idx = Number(btn.dataset.idx);
+            const tr = btn.closest('tr');
+            const input = tr.querySelector('input[type="number"]');
+            const newScore = input.value ? Number(input.value) : null;
+            const isCover = tr.querySelector('.edit-cover').checked;
+            const isPerfect = tr.querySelector('.edit-perfect').checked;
+            const docRef = db.collection("sessions").doc(docId);
+            const docSnap = await docRef.get();
+            let players = docSnap.data().players || [];
+            players[idx].score = newScore;
+            players[idx].isCover = isCover;
+            players[idx].isPerfect = isPerfect;
+            await docRef.update({ players });
+            editing = {};
+            loadScores(auth.currentUser.uid);
+          }
+        });
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+          btn.onclick = async function() {
+            if (!confirm("정말로 삭제하시겠습니까?")) return;
+            const docId = btn.dataset.id;
+            const idx = Number(btn.dataset.idx);
+            const docRef = db.collection("sessions").doc(docId);
+            const docSnap = await docRef.get();
+            let players = docSnap.data().players || [];
+            players.splice(idx, 1);
+            await docRef.update({ players });
+            editing = {};
+            loadScores(auth.currentUser.uid);
+          }
+        });
+      } catch (err) {
+        scoreList.innerHTML = "<div class='no-data'>불러오기 실패: "+err.message+"</div>";
+      }
+    }
+
+
+  </script>
+</body>
+</html>
